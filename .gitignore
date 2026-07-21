@@ -1,0 +1,46 @@
+# Carpetas generadas por Unity (¡Las más pesadas!)
+/[Ll]ibrary/
+/[Tt]emp/
+/[Oo]bj/
+/[Bb]uild/
+/[Bb]uilds/
+/[Ll]ogs/
+/[Uu]ser[Ss]ettings/
+
+# Capturas de memoria y grabaciones
+/[Mm]emoryCaptures/
+/[Rr]ecordings/
+
+# Archivos de caché y configuración de IDEs (Visual Studio, Rider)
+.vs/
+.gradle/
+ExportedObj/
+.consulo/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.tmp
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+
+# Archivos Meta autogenerados que no se deben versionar
+*.pidb.meta
+*.pdb.meta
+*.mdb.meta
+
+# Reportes de crasheo
+sysinfo.txt
+
+# Compilaciones (Builds finales)
+*.apk
+*.aab
+*.unitypackage
+*.app
