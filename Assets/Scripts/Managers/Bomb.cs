@@ -108,15 +108,21 @@ public class Bomb : MonoBehaviour
         }
     }
 
-    // 2. REACCIÓN EN CADENA: Si toca el fuego, explota
+    // 2. REACCIÓN EN CADENA: Solo explota si el fuego cubre el centro de la casilla
     private void OnTriggerEnter2D(Collider2D collision)
     {
         if (collision.GetComponent<Explosion>())
         {
-            ForceExplode();
+            // Calculamos la distancia exacta entre el centro de la bomba y la explosión
+            float distance = Vector2.Distance(transform.position, collision.transform.position);
+
+            // Si la distancia es menor a 0.5 unidades, el fuego está DENTRO de la casilla de la bomba, no solo rozando el borde
+            if (distance < 0.5f)
+            {
+                ForceExplode();
+            }
         }
     }
-
     // 3. TRAMPA BOMBERMAN: Si el jugador sale de la casilla, la bomba se vuelve un muro
     private void OnTriggerExit2D(Collider2D collision)
     {
