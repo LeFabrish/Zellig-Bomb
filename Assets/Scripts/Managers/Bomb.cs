@@ -2,7 +2,7 @@ using UnityEngine;
 using System.Collections;
 
 [RequireComponent(typeof(Collider2D))]
-[RequireComponent(typeof(Rigidbody2D))] // Garantiza la reacción en cadena
+[RequireComponent(typeof(Rigidbody2D))]
 public class Bomb : MonoBehaviour
 {
     [Header("Parámetros")]
@@ -14,6 +14,9 @@ public class Bomb : MonoBehaviour
     private Collider2D bombCollider;
     private float defaultFuseTime;
 
+    // CANDADO: Evita detonaciones infinitas en cadena (StackOverflow)
+    private bool isExploding = false;
+
     void Awake()
     {
         bombCollider = GetComponent<Collider2D>();
@@ -22,10 +25,11 @@ public class Bomb : MonoBehaviour
 
     void OnEnable()
     {
-        // 1. Al plantarse, es transparente para que el jugador pueda huir
+        isExploding = false; // Reseteamos el candado al salir del Object Pooler
         bombCollider.isTrigger = true;
         explodeCoroutine = StartCoroutine(ExplodeRoutine());
     }
+
     void OnDisable()
     {
         fuseTime = defaultFuseTime;
@@ -33,7 +37,8 @@ public class Bomb : MonoBehaviour
 
     public void ForceExplode()
     {
-        if (gameObject.activeInHierarchy)
+        // Solo explota si está activa Y no ha comenzado a explotar ya
+        if (gameObject.activeInHierarchy && !isExploding)
         {
             StopCoroutine(explodeCoroutine);
             Detonate();
@@ -56,41 +61,57 @@ public class Bomb : MonoBehaviour
         transform.localScale = originalScale;
         Detonate();
     }
+
     private void Detonate()
     {
-        // 1. Crear explosión en el centro de la bomba
+        isExploding = true; // Activamos el candado de seguridad inmediatamente
         SpawnExplosion(transform.position);
 
         Vector2[] directions = { Vector2.up, Vector2.down, Vector2.left, Vector2.right };
 
         foreach (Vector2 dir in directions)
         {
-            // BUCLE: Escaneamos casilla por casilla
             for (int i = 1; i <= explosionRadius; i++)
             {
                 Vector2 targetPos = (Vector2)transform.position + (dir * i);
 
-                // MEJORA: Usar OverlapBox (0.5x0.5) es mucho más preciso para detectar Tilemaps
-                Collider2D hit = Physics2D.OverlapBox(targetPos, new Vector2(0.5f, 0.5f), 0f, obstacleLayer);
+                // ESCANEO TOTAL: Detectamos TODO lo que haya en la casilla
+                Collider2D[] hits = Physics2D.OverlapBoxAll(targetPos, new Vector2(0.5f, 0.5f), 0f, obstacleLayer);
 
-                if (hit == null)
+                if (hits.Length == 0)
                 {
-                    // La casilla está libre. Ponemos miel/fuego y seguimos el bucle.
+                    // La casilla está libre de obstáculos
                     SpawnExplosion(targetPos);
                 }
                 else
                 {
-                    // Chocamos con algo. Revisamos si tiene el código de madera destructible.
-                    DestructibleBlock block = hit.GetComponent<DestructibleBlock>();
+                    bool needsExplosionVisual = false;
 
-                    if (block != null)
+                    // Revisamos todos los objetos golpeados en esta casilla específica
+                    foreach (Collider2D hit in hits)
                     {
-                        // SÍ ES MADERA: La rompemos y la miel ocupa su lugar.
-                        block.BreakBlock();
+                        DestructibleBlock block = hit.GetComponent<DestructibleBlock>();
+                        Bomb hitBomb = hit.GetComponent<Bomb>();
+
+                        if (block != null)
+                        {
+                            block.BreakBlock();
+                            needsExplosionVisual = true;
+                        }
+                        else if (hitBomb != null)
+                        {
+                            hitBomb.ForceExplode(); // Esto ya no causará bucle gracias a !isExploding
+                            needsExplosionVisual = true;
+                        }
+                    }
+
+                    // Solo instanciamos una llama visual por casilla si rompimos madera o detonamos bomba
+                    if (needsExplosionVisual)
+                    {
                         SpawnExplosion(targetPos);
                     }
 
-                    // IMPORTANTE: Sea un Muro sólido o una Madera, frenamos el bucle aquí.
+                    // Frenamos la expansión de la llama en esta dirección porque chocamos con la capa obstáculo
                     break;
                 }
             }
@@ -98,6 +119,7 @@ public class Bomb : MonoBehaviour
 
         gameObject.SetActive(false); // Apagamos la bomba
     }
+
     private void SpawnExplosion(Vector2 position)
     {
         GameObject exp = ObjectPooler.Instance.GetPooledExplosion();
@@ -108,22 +130,18 @@ public class Bomb : MonoBehaviour
         }
     }
 
-    // 2. REACCIÓN EN CADENA: Solo explota si el fuego cubre el centro de la casilla
     private void OnTriggerEnter2D(Collider2D collision)
     {
         if (collision.GetComponent<Explosion>())
         {
-            // Calculamos la distancia exacta entre el centro de la bomba y la explosión
             float distance = Vector2.Distance(transform.position, collision.transform.position);
-
-            // Si la distancia es menor a 0.5 unidades, el fuego está DENTRO de la casilla de la bomba, no solo rozando el borde
             if (distance < 0.5f)
             {
                 ForceExplode();
             }
         }
     }
-    // 3. TRAMPA BOMBERMAN: Si el jugador sale de la casilla, la bomba se vuelve un muro
+
     private void OnTriggerExit2D(Collider2D collision)
     {
         if (collision.GetComponent<PlayerController>())

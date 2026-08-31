@@ -2227,8 +2227,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerController
   isSkillActive: 0
-  maxBombs: 1
-  explosionRadius: 1
+  maxBombs: 2
+  explosionRadius: 2
   speed: 4.2
   snapSpeed: 3
   rayOffset: 0.38
