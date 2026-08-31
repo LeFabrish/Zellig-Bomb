@@ -17,9 +17,9 @@ public class PlayerController : MonoBehaviour
     public float snapSpeed = 3.0f; // Velocidad de ajuste al deslizarse por esquinas
 
     [Header("Ajustes de Sensores (Raycasts)")]
-    public float rayOffset = 0.45f;
-    public float forwardOffset = 0.45f;
-    public float checkDistance = 0.05f;
+    public float rayOffset = 0.38f;
+    public float forwardOffset = 0.40f;
+    public float checkDistance = 0.15f;
     public LayerMask solidLayers; // Filtrar colisiones
 
     private Rigidbody2D rb;
@@ -59,82 +59,59 @@ public class PlayerController : MonoBehaviour
         if (inputX != 0) inputY = 0; 
         moveInput = new Vector2(inputX, inputY);
     }
-   
-
     void FixedUpdate()
     {
         if (isSkillActive) return;
         Vector2 currentVelocity = moveInput * speed;
         Vector2 pos = rb.position;
 
-        // 2. Lógica de Corner-Cutting con Sensores y RAYO CENTRAL
         if (moveInput.y > 0) // Moviéndose ARRIBA
         {
             Vector2 originLeft = pos + new Vector2(-rayOffset, forwardOffset);
-            Vector2 originCenter = pos + new Vector2(0f, forwardOffset); // NUEVO RAYO
             Vector2 originRight = pos + new Vector2(rayOffset, forwardOffset);
 
             bool hitLeft = Physics2D.Raycast(originLeft, Vector2.up, checkDistance, solidLayers);
-            bool hitCenter = Physics2D.Raycast(originCenter, Vector2.up, checkDistance, solidLayers); // DETECCIÓN
             bool hitRight = Physics2D.Raycast(originRight, Vector2.up, checkDistance, solidLayers);
 
-            // SOLO desliza si el centro está libre (no estás chocando de cara)
-            if (!hitCenter)
-            {
-                if (hitLeft && !hitRight) currentVelocity.x = snapSpeed;
-                else if (hitRight && !hitLeft) currentVelocity.x = -snapSpeed;
-            }
+            // Anulamos "y" para que solo deslice en "x" sin empujar contra la pared
+            if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
+            else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
         }
         else if (moveInput.y < 0) // Moviéndose ABAJO
         {
             Vector2 originLeft = pos + new Vector2(-rayOffset, -forwardOffset);
-            Vector2 originCenter = pos + new Vector2(0f, -forwardOffset);
             Vector2 originRight = pos + new Vector2(rayOffset, -forwardOffset);
 
             bool hitLeft = Physics2D.Raycast(originLeft, Vector2.down, checkDistance, solidLayers);
-            bool hitCenter = Physics2D.Raycast(originCenter, Vector2.down, checkDistance, solidLayers);
             bool hitRight = Physics2D.Raycast(originRight, Vector2.down, checkDistance, solidLayers);
 
-            if (!hitCenter)
-            {
-                if (hitLeft && !hitRight) currentVelocity.x = snapSpeed;
-                else if (hitRight && !hitLeft) currentVelocity.x = -snapSpeed;
-            }
+            if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
+            else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
         }
         else if (moveInput.x > 0) // Moviéndose DERECHA
         {
             Vector2 originTop = pos + new Vector2(forwardOffset, rayOffset);
-            Vector2 originCenter = pos + new Vector2(forwardOffset, 0f);
             Vector2 originBottom = pos + new Vector2(forwardOffset, -rayOffset);
 
             bool hitTop = Physics2D.Raycast(originTop, Vector2.right, checkDistance, solidLayers);
-            bool hitCenter = Physics2D.Raycast(originCenter, Vector2.right, checkDistance, solidLayers);
             bool hitBottom = Physics2D.Raycast(originBottom, Vector2.right, checkDistance, solidLayers);
 
-            if (!hitCenter)
-            {
-                if (hitTop && !hitBottom) currentVelocity.y = -snapSpeed;
-                else if (hitBottom && !hitTop) currentVelocity.y = snapSpeed;
-            }
+            // Anulamos "x" para que solo deslice en "y"
+            if (hitTop && !hitBottom) { currentVelocity.y = -snapSpeed; currentVelocity.x = 0; }
+            else if (hitBottom && !hitTop) { currentVelocity.y = snapSpeed; currentVelocity.x = 0; }
         }
         else if (moveInput.x < 0) // Moviéndose IZQUIERDA
         {
             Vector2 originTop = pos + new Vector2(-forwardOffset, rayOffset);
-            Vector2 originCenter = pos + new Vector2(-forwardOffset, 0f);
             Vector2 originBottom = pos + new Vector2(-forwardOffset, -rayOffset);
 
             bool hitTop = Physics2D.Raycast(originTop, Vector2.left, checkDistance, solidLayers);
-            bool hitCenter = Physics2D.Raycast(originCenter, Vector2.left, checkDistance, solidLayers);
             bool hitBottom = Physics2D.Raycast(originBottom, Vector2.left, checkDistance, solidLayers);
 
-            if (!hitCenter)
-            {
-                if (hitTop && !hitBottom) currentVelocity.y = -snapSpeed;
-                else if (hitBottom && !hitTop) currentVelocity.y = snapSpeed;
-            }
+            if (hitTop && !hitBottom) { currentVelocity.y = -snapSpeed; currentVelocity.x = 0; }
+            else if (hitBottom && !hitTop) { currentVelocity.y = snapSpeed; currentVelocity.x = 0; }
         }
 
-        // 3. Aplicamos la velocidad final
         rb.linearVelocity = currentVelocity;
     }
 
@@ -186,5 +163,31 @@ public class PlayerController : MonoBehaviour
                 yield return new WaitForSeconds(0.08f);
             }
         }
+    }
+    private void OnDrawGizmos()
+    {
+        Vector2 pos = transform.position;
+
+        // Sensores Verticales (Rojo)
+        Gizmos.color = Color.red;
+
+        // Arriba
+        Gizmos.DrawRay(pos + new Vector2(-rayOffset, forwardOffset), Vector2.up * checkDistance);
+        Gizmos.DrawRay(pos + new Vector2(rayOffset, forwardOffset), Vector2.up * checkDistance);
+
+        // Abajo
+        Gizmos.DrawRay(pos + new Vector2(-rayOffset, -forwardOffset), Vector2.down * checkDistance);
+        Gizmos.DrawRay(pos + new Vector2(rayOffset, -forwardOffset), Vector2.down * checkDistance);
+
+        // Sensores Horizontales (Azul)
+        Gizmos.color = Color.blue;
+
+        // Derecha
+        Gizmos.DrawRay(pos + new Vector2(forwardOffset, rayOffset), Vector2.right * checkDistance);
+        Gizmos.DrawRay(pos + new Vector2(forwardOffset, -rayOffset), Vector2.right * checkDistance);
+
+        // Izquierda
+        Gizmos.DrawRay(pos + new Vector2(-forwardOffset, rayOffset), Vector2.left * checkDistance);
+        Gizmos.DrawRay(pos + new Vector2(-forwardOffset, -rayOffset), Vector2.left * checkDistance);
     }
 }
