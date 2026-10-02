@@ -14,7 +14,6 @@ public class Bomb : MonoBehaviour
     private Collider2D bombCollider;
     private float defaultFuseTime;
 
-    // CANDADO: Evita detonaciones infinitas en cadena (StackOverflow)
     private bool isExploding = false;
 
     void Awake()
@@ -25,7 +24,7 @@ public class Bomb : MonoBehaviour
 
     void OnEnable()
     {
-        isExploding = false; // Reseteamos el candado al salir del Object Pooler
+        isExploding = false;
         bombCollider.isTrigger = true;
         explodeCoroutine = StartCoroutine(ExplodeRoutine());
     }
@@ -37,7 +36,6 @@ public class Bomb : MonoBehaviour
 
     public void ForceExplode()
     {
-        // Solo explota si está activa Y no ha comenzado a explotar ya
         if (gameObject.activeInHierarchy && !isExploding)
         {
             StopCoroutine(explodeCoroutine);
@@ -64,7 +62,7 @@ public class Bomb : MonoBehaviour
 
     private void Detonate()
     {
-        isExploding = true; // Activamos el candado de seguridad inmediatamente
+        isExploding = true;
         SpawnExplosion(transform.position);
 
         Vector2[] directions = { Vector2.up, Vector2.down, Vector2.left, Vector2.right };
@@ -75,49 +73,62 @@ public class Bomb : MonoBehaviour
             {
                 Vector2 targetPos = (Vector2)transform.position + (dir * i);
 
-                // ESCANEO TOTAL: Detectamos TODO lo que haya en la casilla
                 Collider2D[] hits = Physics2D.OverlapBoxAll(targetPos, new Vector2(0.5f, 0.5f), 0f, obstacleLayer);
 
                 if (hits.Length == 0)
                 {
-                    // La casilla está libre de obstáculos
                     SpawnExplosion(targetPos);
                 }
                 else
                 {
                     bool needsExplosionVisual = false;
+                    bool hitSolidWall = false; // Bandera para saber si chocamos con algo que SÍ debe frenar el fuego
 
-                    // Revisamos todos los objetos golpeados en esta casilla específica
                     foreach (Collider2D hit in hits)
                     {
                         DestructibleBlock block = hit.GetComponent<DestructibleBlock>();
                         Bomb hitBomb = hit.GetComponent<Bomb>();
+                        PlayerController player = hit.GetComponent<PlayerController>();
 
                         if (block != null)
                         {
                             block.BreakBlock();
                             needsExplosionVisual = true;
+                            hitSolidWall = true; // La madera frena el fuego
                         }
                         else if (hitBomb != null)
                         {
-                            hitBomb.ForceExplode(); // Esto ya no causará bucle gracias a !isExploding
+                            hitBomb.ForceExplode();
                             needsExplosionVisual = true;
+                            hitSolidWall = true; // Otra bomba frena el fuego actual
+                        }
+                        else if (player != null)
+                        {
+                            // Si golpea al jugador, generamos fuego y dejamos que lo atraviese (NO frenamos el fuego)
+                            needsExplosionVisual = true;
+                            // No asignamos hitSolidWall = true aquí.
+                        }
+                        else
+                        {
+                            // Es un muro indestructible
+                            hitSolidWall = true;
                         }
                     }
 
-                    // Solo instanciamos una llama visual por casilla si rompimos madera o detonamos bomba
                     if (needsExplosionVisual)
                     {
                         SpawnExplosion(targetPos);
                     }
 
-                    // Frenamos la expansión de la llama en esta dirección porque chocamos con la capa obstáculo
-                    break;
+                    if (hitSolidWall)
+                    {
+                        break;
+                    }
                 }
             }
         }
 
-        gameObject.SetActive(false); // Apagamos la bomba
+        gameObject.SetActive(false);
     }
 
     private void SpawnExplosion(Vector2 position)

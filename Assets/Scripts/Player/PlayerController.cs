@@ -4,38 +4,45 @@ using System.Collections;
 using System;
 
 [RequireComponent(typeof(Rigidbody2D))]
+[RequireComponent(typeof(Animator))]
 public class PlayerController : MonoBehaviour
 {
     [Header("Estado del jugador")]
-    public bool isSkillActive = false; 
-    public Action<Bomb> OnBombPlanted; // Evento para notificar cuando se planta una bomba
+    public bool isSkillActive = false;
+    public bool isDead = false;
+    public Action<Bomb> OnBombPlanted;
 
     [Header("Estadísticas Base")]
-    public int maxBombs = 1;      // Límite de bombas en pantalla
+    public int maxBombs = 1;
     public int explosionRadius = 1;
-    public float speed = 4.2f; // Velocidad de movimiento del jugador
-    public float snapSpeed = 3.0f; // Velocidad de ajuste al deslizarse por esquinas
+    public float speed = 4.2f;
+    public float snapSpeed = 3.0f;
 
     [Header("Ajustes de Sensores (Raycasts)")]
     public float rayOffset = 0.38f;
     public float forwardOffset = 0.40f;
-    public float checkDistance = 0.15f;
-    public LayerMask solidLayers; // Filtrar colisiones
+    public float checkDistance = 0.30f;
+    public LayerMask solidLayers;
 
+    public Vector2 lastDirection = Vector2.down;
+
+    [HideInInspector] public Animator anim;
     private Rigidbody2D rb;
     private Vector2 moveInput;
+    private Vector2 startPosition;
 
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
-
-        // Laseres ignoran los Triggers
+        anim = GetComponent<Animator>();
+        startPosition = transform.position;
         Physics2D.queriesHitTriggers = false;
     }
 
     void Update()
     {
-        if (isSkillActive) return;
+        if (isSkillActive || isDead) return;
+
         float inputX = 0f;
         float inputY = 0f;
 
@@ -48,7 +55,7 @@ public class PlayerController : MonoBehaviour
             else if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) inputY = -1f;
         }
 
-        if (Keyboard.current.kKey.wasPressedThisFrame || Keyboard.current.xKey.wasPressedThisFrame) 
+        if (Keyboard.current.kKey.wasPressedThisFrame || Keyboard.current.xKey.wasPressedThisFrame)
         {
             if (GetActiveBombCount() < maxBombs)
             {
@@ -56,16 +63,30 @@ public class PlayerController : MonoBehaviour
             }
         }
 
-        if (inputX != 0) inputY = 0; 
+        if (inputX != 0) inputY = 0;
         moveInput = new Vector2(inputX, inputY);
+
+        if (moveInput != Vector2.zero)
+        {
+            lastDirection = moveInput;
+        }
+
+        if (anim != null)
+        {
+            anim.SetFloat("MoveX", lastDirection.x);
+            anim.SetFloat("MoveY", lastDirection.y);
+            anim.SetFloat("Speed", moveInput.sqrMagnitude);
+        }
     }
+
     void FixedUpdate()
     {
-        if (isSkillActive) return;
+        if (isSkillActive || isDead) return;
+
         Vector2 currentVelocity = moveInput * speed;
         Vector2 pos = rb.position;
 
-        if (moveInput.y > 0) // Moviéndose ARRIBA
+        if (moveInput.y > 0)
         {
             Vector2 originLeft = pos + new Vector2(-rayOffset, forwardOffset);
             Vector2 originRight = pos + new Vector2(rayOffset, forwardOffset);
@@ -73,11 +94,10 @@ public class PlayerController : MonoBehaviour
             bool hitLeft = Physics2D.Raycast(originLeft, Vector2.up, checkDistance, solidLayers);
             bool hitRight = Physics2D.Raycast(originRight, Vector2.up, checkDistance, solidLayers);
 
-            // Anulamos "y" para que solo deslice en "x" sin empujar contra la pared
             if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
             else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
         }
-        else if (moveInput.y < 0) // Moviéndose ABAJO
+        else if (moveInput.y < 0)
         {
             Vector2 originLeft = pos + new Vector2(-rayOffset, -forwardOffset);
             Vector2 originRight = pos + new Vector2(rayOffset, -forwardOffset);
@@ -88,7 +108,7 @@ public class PlayerController : MonoBehaviour
             if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
             else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
         }
-        else if (moveInput.x > 0) // Moviéndose DERECHA
+        else if (moveInput.x > 0)
         {
             Vector2 originTop = pos + new Vector2(forwardOffset, rayOffset);
             Vector2 originBottom = pos + new Vector2(forwardOffset, -rayOffset);
@@ -96,11 +116,10 @@ public class PlayerController : MonoBehaviour
             bool hitTop = Physics2D.Raycast(originTop, Vector2.right, checkDistance, solidLayers);
             bool hitBottom = Physics2D.Raycast(originBottom, Vector2.right, checkDistance, solidLayers);
 
-            // Anulamos "x" para que solo deslice en "y"
             if (hitTop && !hitBottom) { currentVelocity.y = -snapSpeed; currentVelocity.x = 0; }
             else if (hitBottom && !hitTop) { currentVelocity.y = snapSpeed; currentVelocity.x = 0; }
         }
-        else if (moveInput.x < 0) // Moviéndose IZQUIERDA
+        else if (moveInput.x < 0)
         {
             Vector2 originTop = pos + new Vector2(-forwardOffset, rayOffset);
             Vector2 originBottom = pos + new Vector2(-forwardOffset, -rayOffset);
@@ -115,6 +134,32 @@ public class PlayerController : MonoBehaviour
         rb.linearVelocity = currentVelocity;
     }
 
+    public void Die()
+    {
+        if (!isDead)
+        {
+            StartCoroutine(DeathSequence());
+        }
+    }
+
+    private IEnumerator DeathSequence()
+    {
+        isDead = true;
+        rb.linearVelocity = Vector2.zero;
+
+        if (anim != null) anim.SetTrigger("Die");
+
+        yield return new WaitForSeconds(1.0f);
+
+        transform.position = startPosition;
+
+        isDead = false;
+        if (anim != null)
+        {
+            anim.ResetTrigger("Die");
+        }
+    }
+
     private void PlantBomb()
     {
         float snapX = Mathf.Round(rb.position.x);
@@ -126,22 +171,17 @@ public class PlayerController : MonoBehaviour
         {
             bombObj.transform.position = gridPosition;
             Bomb bombScript = bombObj.GetComponent<Bomb>();
-
-            // 1. PASAR EL RANGO DE EXPLOSIÓN DEL JUGADOR A LA BOMBA
             bombScript.explosionRadius = this.explosionRadius;
-
-            // EL GANCHO: Permite a las habilidades modificar la bomba ANTES de activarla
             OnBombPlanted?.Invoke(bombScript);
-
             bombObj.SetActive(true);
         }
     }
+
     private int GetActiveBombCount()
     {
-        // Consultamos la lista directamente en el almacén. ¡Sin delay!
         return ObjectPooler.Instance.GetActiveBombCount();
     }
-    // Función llamada desde PowerUp.cs para activar retroalimentación visual
+
     public void TriggerPowerUpFeedback()
     {
         StartCoroutine(PowerUpGlowRoutine());
@@ -153,40 +193,46 @@ public class PlayerController : MonoBehaviour
         if (sr != null)
         {
             Color originalColor = sr.color;
-
-            // Animación temporal en código: parpadeo rápido en azul cyan
             for (int i = 0; i < 3; i++)
             {
-                sr.color = new Color(0.2f, 0.8f, 1f, 1f); // Tono azul/cyan brillante
+                sr.color = new Color(0.2f, 0.8f, 1f, 1f);
                 yield return new WaitForSeconds(0.08f);
                 sr.color = originalColor;
                 yield return new WaitForSeconds(0.08f);
             }
         }
     }
+
+    private void OnTriggerEnter2D(Collider2D collision)
+    {
+        ComprobarMuerte(collision);
+    }
+
+    private void OnTriggerStay2D(Collider2D collision)
+    {
+        ComprobarMuerte(collision);
+    }
+
+    private void ComprobarMuerte(Collider2D collision)
+    {
+        // Si tocamos la miel "Explosion" morimos
+        if (collision.GetComponent<Explosion>() != null)
+        {
+            Die();
+        }
+    }
+
     private void OnDrawGizmos()
     {
         Vector2 pos = transform.position;
-
-        // Sensores Verticales (Rojo)
         Gizmos.color = Color.red;
-
-        // Arriba
         Gizmos.DrawRay(pos + new Vector2(-rayOffset, forwardOffset), Vector2.up * checkDistance);
         Gizmos.DrawRay(pos + new Vector2(rayOffset, forwardOffset), Vector2.up * checkDistance);
-
-        // Abajo
         Gizmos.DrawRay(pos + new Vector2(-rayOffset, -forwardOffset), Vector2.down * checkDistance);
         Gizmos.DrawRay(pos + new Vector2(rayOffset, -forwardOffset), Vector2.down * checkDistance);
-
-        // Sensores Horizontales (Azul)
         Gizmos.color = Color.blue;
-
-        // Derecha
         Gizmos.DrawRay(pos + new Vector2(forwardOffset, rayOffset), Vector2.right * checkDistance);
         Gizmos.DrawRay(pos + new Vector2(forwardOffset, -rayOffset), Vector2.right * checkDistance);
-
-        // Izquierda
         Gizmos.DrawRay(pos + new Vector2(-forwardOffset, rayOffset), Vector2.left * checkDistance);
         Gizmos.DrawRay(pos + new Vector2(-forwardOffset, -rayOffset), Vector2.left * checkDistance);
     }
