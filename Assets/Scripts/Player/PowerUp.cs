@@ -61,7 +61,7 @@ public class PowerUp : MonoBehaviour
                 jugador.explosionRadius++;
                 break;
         }
-
+        jugador.ActualizarHUD();
         jugador.TriggerPowerUpFeedback();
     }
 }

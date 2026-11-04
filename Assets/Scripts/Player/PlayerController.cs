@@ -1,16 +1,22 @@
+using System;
+using System.Collections;
+using System.Collections.Generic;
+using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
-using System.Collections;
-using System;
 
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(Animator))]
 public class PlayerController : MonoBehaviour
 {
+
     [Header("Estado del jugador")]
     public bool isSkillActive = false;
     public bool isDead = false;
     public Action<Bomb> OnBombPlanted;
+
+    [Header("HUD")]
+    [SerializeField] public List<HudStats> hudStats;
 
     [Header("Estadísticas Base")]
     public int maxBombs = 1;
@@ -37,6 +43,7 @@ public class PlayerController : MonoBehaviour
         anim = GetComponent<Animator>();
         startPosition = transform.position;
         Physics2D.queriesHitTriggers = false;
+        ActualizarHUD();
     }
 
     void Update()
@@ -75,7 +82,7 @@ public class PlayerController : MonoBehaviour
         {
             anim.SetFloat("MoveX", lastDirection.x);
             anim.SetFloat("MoveY", lastDirection.y);
-            anim.SetFloat("Speed", moveInput.sqrMagnitude);
+            anim.SetFloat("Speed", moveInput.magnitude);
         }
     }
 
@@ -142,6 +149,29 @@ public class PlayerController : MonoBehaviour
         }
     }
 
+    public void ActualizarHUD()
+    {
+        foreach(HudStats stat in hudStats)
+        {
+            if (stat != null)
+            {
+                stat.ActualizarDatos(0, maxBombs, speed-3, explosionRadius);
+            }
+        }
+    }
+
+    public void SelectAnim(RuntimeAnimatorController newController)
+    {
+        if (anim == null)
+        {
+            anim = GetComponent<Animator>();
+        }
+
+        if (anim != null)
+        {
+            anim.runtimeAnimatorController = newController;
+        }
+    }
     private IEnumerator DeathSequence()
     {
         isDead = true;

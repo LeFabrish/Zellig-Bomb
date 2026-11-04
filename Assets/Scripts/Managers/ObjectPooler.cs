@@ -7,12 +7,12 @@ public class ObjectPooler : MonoBehaviour
 
     [Header("Pool de Bombas")]
     public GameObject bombPrefab;
-    public int bombPoolSize = 15;
+    public int bombPoolSize = 13; // Honor a la cancelacion Update #130
     private List<GameObject> pooledBombs;
 
     [Header("Pool de Explosiones (Miel)")]
     public GameObject explosionPrefab;
-    public int explosionPoolSize = 40; // Necesitamos más porque una cruz usa 5 cubos
+    public int explosionPoolSize = 60; // Necesitamos más porque una cruz usa 5 cubos
     private List<GameObject> pooledExplosions;
 
     void Awake()

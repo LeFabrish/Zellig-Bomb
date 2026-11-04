@@ -8,13 +8,11 @@ public class GameManager : MonoBehaviour
 
     void Update()
     {
-        // Reinicio rápido con "R"
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
         {
             RestartGame();
         }
 
-        // Pausar con "P" o "Escape"
         if (Keyboard.current != null &&
            (Keyboard.current.pKey.wasPressedThisFrame || Keyboard.current.escapeKey.wasPressedThisFrame))
         {
@@ -24,10 +22,8 @@ public class GameManager : MonoBehaviour
 
     private void RestartGame()
     {
-        // 1. Descongelamos el tiempo (por si el jugador presiona R mientras el juego estaba en pausa)
+        // Descongelamos y recargamos la escena
         Time.timeScale = 1f;
-
-        // 2. Recargamos la escena actual
         SceneManager.LoadScene(SceneManager.GetActiveScene().name);
     }
 
@@ -37,12 +33,10 @@ public class GameManager : MonoBehaviour
 
         if (isPaused)
         {
-            // Congela todas las físicas, movimientos y timers
             Time.timeScale = 0f;
         }
         else
         {
-            // Devuelve el juego a su velocidad normal
             Time.timeScale = 1f;
         }
     }
