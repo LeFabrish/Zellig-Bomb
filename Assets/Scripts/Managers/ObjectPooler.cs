@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 
 public class ObjectPooler : MonoBehaviour
@@ -63,5 +64,39 @@ public class ObjectPooler : MonoBehaviour
             if (pooledBombs[i].activeInHierarchy) count++;
         }
         return count;
+    }
+
+    // Cuenta solo las bombas de una jugadora. El pool siguei siendo compartido.
+    public int GetActiveBombCount(PlayerController owner)
+    {
+        if (owner == null) return 0;
+        int count = 0;
+
+        foreach (GameObject obj in pooledBombs)
+        {
+            if(obj != null && obj.activeInHierarchy)
+            {
+                Bomb bomb = obj.GetComponent<Bomb>();
+                if(bomb != null && bomb.Owner == owner)
+                {
+                    count++;
+                }
+            }
+        }
+
+        return count;
+    }
+
+    public bool HasActiveBombAt(Vector2 gridPosition)
+    {
+        foreach(GameObject obj in pooledBombs)
+        {
+            if (obj != null && obj.activeInHierarchy &&
+                Vector2.Distance((Vector2)obj.transform.position, gridPosition) < 0.1f)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 }

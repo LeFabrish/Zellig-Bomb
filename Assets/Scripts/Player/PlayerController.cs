@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 
 [RequireComponent(typeof(Rigidbody2D))]
 [RequireComponent(typeof(Animator))]
+[RequireComponent(typeof(PlayerInput))]
 public class PlayerController : MonoBehaviour
 {
 
@@ -35,6 +36,8 @@ public class PlayerController : MonoBehaviour
     [HideInInspector] public Animator anim;
     private Rigidbody2D rb;
     private Vector2 moveInput;
+    private InputAction moveAction;
+    private InputAction plantBombAction;
     private Vector2 startPosition;
 
     void Start()
@@ -42,36 +45,67 @@ public class PlayerController : MonoBehaviour
         rb = GetComponent<Rigidbody2D>();
         anim = GetComponent<Animator>();
         startPosition = transform.position;
+        PlayerInput playerInput = GetComponent<PlayerInput>();
+
+        if (playerInput == null || playerInput.actions == null)
+        {
+            Debug.LogError($"{name}: falta PlayerInput con un input Actions Asset asignado.", this);
+            enabled = false;
+            return;
+        }
+
+        moveAction = playerInput.actions.FindAction("Player/Move");
+        if(moveAction == null)
+        {
+            Debug.LogError($"{name}: no existe la acción 'Player/Move' en el Input Actions Asset.", this);
+            enabled = false;
+            return;
+        }
+
+        plantBombAction = playerInput.actions.FindAction("Player/PlantBomb");
+        if(plantBombAction == null)
+        {
+            Debug.LogError($"{name}: no existe la acción 'Player/PlantBomb' en el Input Actions Asset.", this);
+        }
+
         Physics2D.queriesHitTriggers = false;
         ActualizarHUD();
     }
 
     void Update()
     {
-        if (isSkillActive || isDead) return;
-
-        float inputX = 0f;
-        float inputY = 0f;
-
-        if (Keyboard.current != null)
+        // ETAPA 1: solo movimiento. Las bombas y habilidades se conectarán
+        // a InputActions en los siguientes pasos del multijugaodr.
+        
+        if (isDead || isSkillActive)
         {
-            if (Keyboard.current.dKey.isPressed || Keyboard.current.rightArrowKey.isPressed) inputX = 1f;
-            else if (Keyboard.current.aKey.isPressed || Keyboard.current.leftArrowKey.isPressed) inputX = -1f;
-
-            if (Keyboard.current.wKey.isPressed || Keyboard.current.upArrowKey.isPressed) inputY = 1f;
-            else if (Keyboard.current.sKey.isPressed || Keyboard.current.downArrowKey.isPressed) inputY = -1f;
+            moveInput = Vector2.zero;
+            return;
         }
 
-        if (Keyboard.current.kKey.wasPressedThisFrame || Keyboard.current.xKey.wasPressedThisFrame)
+        // Cada PlayerInpyt lee su copia de acciones y su propio dispositivo emparejado.
+        if(plantBombAction != null && plantBombAction.WasPressedThisFrame() &&
+            ObjectPooler.Instance != null && GetActiveBombCount() < maxBombs)
         {
-            if (GetActiveBombCount() < maxBombs)
-            {
-                PlantBomb();
-            }
+            PlantBomb();
         }
 
-        if (inputX != 0) inputY = 0;
-        moveInput = new Vector2(inputX, inputY);
+        Vector2 rawInput = moveAction.ReadValue<Vector2>();
+        const float deadZone = 0.2f;
+
+        // Evita movimiento involuntario por el stick analógico de PC Remote.
+        if(rawInput.sqrMagnitude < deadZone * deadZone)
+        {
+            moveInput = Vector2.zero;
+        }
+        else if (Mathf.Abs(rawInput.x) >= Mathf.Abs(rawInput.y))
+        {
+            moveInput = new Vector2(Mathf.Sign(rawInput.x), 0f);
+        }
+        else
+        {
+            moveInput = new Vector2(0f, Mathf.Sign(rawInput.y));
+        }
 
         if (moveInput != Vector2.zero)
         {
@@ -196,20 +230,30 @@ public class PlayerController : MonoBehaviour
         float snapY = Mathf.Round(rb.position.y);
         Vector2 gridPosition = new Vector2(snapX, snapY);
 
+        // Evita dos bombas en una misma casilla, incluso entre jugadores distintos.
+        if (ObjectPooler.Instance.HasActiveBombAt(gridPosition)) return;
+
         GameObject bombObj = ObjectPooler.Instance.GetPooledBomb();
-        if (bombObj != null)
+        if (bombObj == null) return;
+
+        Bomb bombScript = bombObj.GetComponent<Bomb>();
+        if (bombScript == null)
         {
-            bombObj.transform.position = gridPosition;
-            Bomb bombScript = bombObj.GetComponent<Bomb>();
-            bombScript.explosionRadius = this.explosionRadius;
-            OnBombPlanted?.Invoke(bombScript);
-            bombObj.SetActive(true);
+            Debug.LogError($"{name}: el objeto de bomba no tiene un componente Bomb.", this);
+            return;
         }
+        // Ejecucion 
+        bombObj.transform.position = gridPosition;
+        bombScript.SetOwner(this);  // Registrar propietario antes de activar desde el pool.
+        bombScript.explosionRadius = explosionRadius;
+        OnBombPlanted?.Invoke(bombScript); // Compatibilidad con futura habilidad de Mymy.
+        bombObj.SetActive(true);
+
     }
 
     private int GetActiveBombCount()
     {
-        return ObjectPooler.Instance.GetActiveBombCount();
+        return ObjectPooler.Instance.GetActiveBombCount(this);
     }
 
     public void TriggerPowerUpFeedback()

@@ -1,5 +1,6 @@
 using UnityEngine;
 using System.Collections;
+using System.Collections.Generic;
 
 [RequireComponent(typeof(Collider2D))]
 [RequireComponent(typeof(Rigidbody2D))]
@@ -16,6 +17,15 @@ public class Bomb : MonoBehaviour
 
     private bool isExploding = false;
 
+    // Se limpia cada vez que la bomba regresa al pool, para evitar que se acumulen referencias a jugadores que ya no están en la escena.
+    public PlayerController Owner { get; private set; }
+    // Conjunto para rastrear los colliders de jugadores dentro del área de la bomba
+    private readonly HashSet<Collider2D> playerInside = new HashSet<Collider2D>(); 
+
+    public void SetOwner(PlayerController owner)
+    {
+        Owner = owner;
+    }
     void Awake()
     {
         bombCollider = GetComponent<Collider2D>();
@@ -25,6 +35,7 @@ public class Bomb : MonoBehaviour
     void OnEnable()
     {
         isExploding = false;
+        playerInside.Clear(); // Limpiar la lista de jugadores dentro del área al activar la bomba
         bombCollider.isTrigger = true;
         explodeCoroutine = StartCoroutine(ExplodeRoutine());
     }
@@ -32,6 +43,8 @@ public class Bomb : MonoBehaviour
     void OnDisable()
     {
         fuseTime = defaultFuseTime;
+        Owner = null; // Limpiar la referencia al propietario cuando la bomba se desactiva
+        playerInside.Clear(); // Limpiar la lista de jugadores dentro del área al desactivar la bomba
     }
 
     public void ForceExplode()
@@ -50,7 +63,7 @@ public class Bomb : MonoBehaviour
 
         while (timer < fuseTime)
         {
-            float scale = 1f + Mathf.PingPong(timer * 2f, 0.15f);
+            float scale = 1f + Mathf.PingPong(timer * 2f, 0.15f); // Animación de pulsación de la bomba
             transform.localScale = originalScale * scale;
             timer += Time.deltaTime;
             yield return null;
@@ -143,6 +156,9 @@ public class Bomb : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
+        // Registrar a TODOS los jugadores que siguen dentro de la bomba.
+        playerInside.Add(collision);
+
         if (collision.GetComponent<Explosion>())
         {
             float distance = Vector2.Distance(transform.position, collision.transform.position);
@@ -153,11 +169,24 @@ public class Bomb : MonoBehaviour
         }
     }
 
+    private void OnTriggerStay2D(Collider2D collision)
+    {
+        if(bombCollider.isTrigger && collision.GetComponent<PlayerController>() != null)
+        {
+            playerInside.Add(collision); // Asegurarse de que el jugador esté registrado mientras esté dentro del área
+        }
+    }
+
+
+
     private void OnTriggerExit2D(Collider2D collision)
     {
-        if (collision.GetComponent<PlayerController>())
-        {
-            bombCollider.isTrigger = false;
-        }
+        if (collision.GetComponent<PlayerController>() == null) return;
+
+        playerInside.Remove(collision); // Eliminar al jugador de la lista cuando salga del área
+        // Una bomba se hace solida solo cuando todos los jugadores
+        // que estaban adentro ya salieron de la casiilla.
+        if(!isExploding && playerInside.Count == 0)
+            bombCollider.isTrigger = false; // Hacer que la bomba sea sólida nuevamente
     }
 }
