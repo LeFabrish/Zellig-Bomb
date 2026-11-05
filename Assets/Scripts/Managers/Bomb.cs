@@ -13,38 +13,153 @@ public class Bomb : MonoBehaviour
 
     private Coroutine explodeCoroutine;
     private Collider2D bombCollider;
+    private Rigidbody2D bombRigidbody;
     private float defaultFuseTime;
 
     private bool isExploding = false;
 
-    // Se limpia cada vez que la bomba regresa al pool, para evitar que se acumulen referencias a jugadores que ya no están en la escena.
+    // Se mantiene antes de activar la bomba desde el pool.
     public PlayerController Owner { get; private set; }
-    // Conjunto para rastrear los colliders de jugadores dentro del área de la bomba
-    private readonly HashSet<Collider2D> playerInside = new HashSet<Collider2D>(); 
+
+    [Header("Salida de la bomba")]
+    [Tooltip("Separación mínima entre todos los colliders del jugador y la bomba para restaurar su colisión.")]
+    [Min(0f)] public float exitClearance = 0.03f;
+
+    // La excepcion debe ser INDIVIDUAL: Maya puede salir mientras Coco
+    // sigue sobre la bomba, y viceversa. Soporta varios colliders por jugador.
+    private readonly Dictionary<PlayerController, List<Collider2D>>
+        ignoredByPlayer = new Dictionary<PlayerController, List<Collider2D>>();
+    private readonly List<PlayerController> finishedPlayers = new List<PlayerController>();
 
     public void SetOwner(PlayerController owner)
     {
         Owner = owner;
     }
+
     void Awake()
     {
         bombCollider = GetComponent<Collider2D>();
+        bombRigidbody = GetComponent<Rigidbody2D>();
+        bombRigidbody.bodyType = RigidbodyType2D.Static;
+        bombRigidbody.linearVelocity = Vector2.zero;
+        bombRigidbody.angularVelocity = 0f;
         defaultFuseTime = fuseTime;
     }
 
     void OnEnable()
     {
         isExploding = false;
-        playerInside.Clear(); // Limpiar la lista de jugadores dentro del área al activar la bomba
-        bombCollider.isTrigger = true;
+        ignoredByPlayer.Clear();
+        bombRigidbody.bodyType = RigidbodyType2D.Static;
+        bombRigidbody.linearVelocity = Vector2.zero;
+        bombRigidbody.angularVelocity = 0f;
+        bombCollider.isTrigger = false;
         explodeCoroutine = StartCoroutine(ExplodeRoutine());
+    }
+
+    // Llamar inmediatamente DESPUES de activar la bomba desde el pool.
+    // La bomba sigue siendo solida para quienes se acerquen desde fuera.
+    // Solo quienes YA estaban encima al crearla reciben permiso de salida.
+    public void AllowPlayersInsideToExit()
+    {
+        if (!gameObject.activeInHierarchy || bombCollider == null) return;
+
+        // Al modificar transform.position en Update, Physics2D puede no
+        // haber actualizado las posiciones de los colliders todavia.
+        Physics2D.SyncTransforms();
+
+        // Incluimos a cualquier jugadora sobre la misma bomba, no solo Owner.
+        PlayerController[] players = FindObjectsByType<PlayerController>(FindObjectsSortMode.None);
+        foreach (PlayerController player in players)
+        {
+            if (player == null || !player.isActiveAndEnabled) continue;
+
+            Collider2D[] colliders = player.GetComponentsInChildren<Collider2D>();
+            List<Collider2D> solids = new List<Collider2D>();
+            bool currentlyInside = false;
+
+            foreach (Collider2D col in colliders)
+            {
+                if (col == null || !col.enabled || col.isTrigger ||
+                    !col.gameObject.activeInHierarchy) continue;
+
+                solids.Add(col);
+                ColliderDistance2D distance = bombCollider.Distance(col);
+                if (distance.isValid && distance.distance <= 0f)
+                    currentlyInside = true;
+            }
+
+            // El propietario se incluye siempre, incluso si esta en el
+            // borde de la casilla al pulsar el boton de colocar bomba.
+            if (!currentlyInside && player != Owner) continue;
+            if (solids.Count == 0) continue;
+
+            foreach (Collider2D col in solids)
+                Physics2D.IgnoreCollision(bombCollider, col, true);
+
+            ignoredByPlayer[player] = solids;
+        }
+    }
+
+    // Alias de compatibilidad para codigo antiguo. No utilizar para nuevas
+    // mecánicas: AllowPlayersInsideToExit describe mejor el comportamiento.
+    public void AllowOwnerToExit()
+    {
+        AllowPlayersInsideToExit();
+    }
+
+    // El PlayerController lo consulta para que sus Raycasts de alineamiento
+    // no bloqueen a alguien que aun puede salir de esta bomba.
+    public bool AllowsTemporaryPassage(PlayerController player)
+    {
+        return player != null && ignoredByPlayer.ContainsKey(player);
+    }
+
+    void FixedUpdate()
+    {
+        if (ignoredByPlayer.Count == 0) return;
+        finishedPlayers.Clear();
+
+        // El permiso se retira DE FORMA INDIVIDUAL cuando todo el cuerpo
+        // del jugador se ha separado completamente de la bomba.
+        foreach (KeyValuePair<PlayerController, List<Collider2D>> entry in ignoredByPlayer)
+        {
+            bool fullyOutside = true;
+            foreach (Collider2D col in entry.Value)
+            {
+                if (col == null || !col.enabled || !col.gameObject.activeInHierarchy)
+                    continue;
+
+                ColliderDistance2D distance = bombCollider.Distance(col);
+                if (!distance.isValid || distance.distance <= exitClearance)
+                {
+                    fullyOutside = false;
+                    break;
+                }
+            }
+
+            if (fullyOutside) finishedPlayers.Add(entry.Key);
+        }
+
+        foreach (PlayerController player in finishedPlayers)
+        {
+            List<Collider2D> colliders = ignoredByPlayer[player];
+            foreach (Collider2D col in colliders)
+            {
+                if (col != null && col.enabled && col.gameObject.activeInHierarchy)
+                    Physics2D.IgnoreCollision(bombCollider, col, false);
+            }
+            ignoredByPlayer.Remove(player);
+        }
     }
 
     void OnDisable()
     {
         fuseTime = defaultFuseTime;
-        Owner = null; // Limpiar la referencia al propietario cuando la bomba se desactiva
-        playerInside.Clear(); // Limpiar la lista de jugadores dentro del área al desactivar la bomba
+        Owner = null;
+        ignoredByPlayer.Clear(); // Unity elimina los ignores al desactivar.
+        finishedPlayers.Clear();
+        explodeCoroutine = null;
     }
 
     public void ForceExplode()
@@ -156,37 +271,10 @@ public class Bomb : MonoBehaviour
 
     private void OnTriggerEnter2D(Collider2D collision)
     {
-        // Registrar a TODOS los jugadores que siguen dentro de la bomba.
-        playerInside.Add(collision);
-
-        if (collision.GetComponent<Explosion>())
+        if (collision.GetComponent<Explosion>() != null &&
+            Vector2.Distance(transform.position, collision.transform.position) < 0.5f)
         {
-            float distance = Vector2.Distance(transform.position, collision.transform.position);
-            if (distance < 0.5f)
-            {
-                ForceExplode();
-            }
+            ForceExplode();
         }
-    }
-
-    private void OnTriggerStay2D(Collider2D collision)
-    {
-        if(bombCollider.isTrigger && collision.GetComponent<PlayerController>() != null)
-        {
-            playerInside.Add(collision); // Asegurarse de que el jugador esté registrado mientras esté dentro del área
-        }
-    }
-
-
-
-    private void OnTriggerExit2D(Collider2D collision)
-    {
-        if (collision.GetComponent<PlayerController>() == null) return;
-
-        playerInside.Remove(collision); // Eliminar al jugador de la lista cuando salga del área
-        // Una bomba se hace solida solo cuando todos los jugadores
-        // que estaban adentro ya salieron de la casiilla.
-        if(!isExploding && playerInside.Count == 0)
-            bombCollider.isTrigger = false; // Hacer que la bomba sea sólida nuevamente
     }
 }

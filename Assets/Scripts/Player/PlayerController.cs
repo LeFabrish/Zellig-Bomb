@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.InputSystem;
 
@@ -35,6 +34,7 @@ public class PlayerController : MonoBehaviour
 
     [HideInInspector] public Animator anim;
     private Rigidbody2D rb;
+    private Collider2D bodyCollider;
     private Vector2 moveInput;
     private InputAction moveAction;
     private InputAction plantBombAction;
@@ -43,6 +43,7 @@ public class PlayerController : MonoBehaviour
     void Start()
     {
         rb = GetComponent<Rigidbody2D>();
+        bodyCollider = GetComponent<Collider2D>();
         anim = GetComponent<Animator>();
         startPosition = transform.position;
         PlayerInput playerInput = GetComponent<PlayerInput>();
@@ -55,7 +56,7 @@ public class PlayerController : MonoBehaviour
         }
 
         moveAction = playerInput.actions.FindAction("Player/Move");
-        if(moveAction == null)
+        if (moveAction == null)
         {
             Debug.LogError($"{name}: no existe la acción 'Player/Move' en el Input Actions Asset.", this);
             enabled = false;
@@ -63,7 +64,7 @@ public class PlayerController : MonoBehaviour
         }
 
         plantBombAction = playerInput.actions.FindAction("Player/PlantBomb");
-        if(plantBombAction == null)
+        if (plantBombAction == null)
         {
             Debug.LogError($"{name}: no existe la acción 'Player/PlantBomb' en el Input Actions Asset.", this);
         }
@@ -74,9 +75,8 @@ public class PlayerController : MonoBehaviour
 
     void Update()
     {
-        // ETAPA 1: solo movimiento. Las bombas y habilidades se conectarán
-        // a InputActions en los siguientes pasos del multijugaodr.
-        
+        // Movimiento y bombas leen unicamente las acciones de este PLayerInput
+        // Skill y SkillCoco leeran Player/Skill del mismo PlayerInput
         if (isDead || isSkillActive)
         {
             moveInput = Vector2.zero;
@@ -84,7 +84,7 @@ public class PlayerController : MonoBehaviour
         }
 
         // Cada PlayerInpyt lee su copia de acciones y su propio dispositivo emparejado.
-        if(plantBombAction != null && plantBombAction.WasPressedThisFrame() &&
+        if (plantBombAction != null && plantBombAction.WasPressedThisFrame() &&
             ObjectPooler.Instance != null && GetActiveBombCount() < maxBombs)
         {
             PlantBomb();
@@ -94,7 +94,7 @@ public class PlayerController : MonoBehaviour
         const float deadZone = 0.2f;
 
         // Evita movimiento involuntario por el stick analógico de PC Remote.
-        if(rawInput.sqrMagnitude < deadZone * deadZone)
+        if (rawInput.sqrMagnitude < deadZone * deadZone)
         {
             moveInput = Vector2.zero;
         }
@@ -119,7 +119,6 @@ public class PlayerController : MonoBehaviour
             anim.SetFloat("Speed", moveInput.magnitude);
         }
     }
-
     void FixedUpdate()
     {
         if (isSkillActive || isDead) return;
@@ -132,8 +131,8 @@ public class PlayerController : MonoBehaviour
             Vector2 originLeft = pos + new Vector2(-rayOffset, forwardOffset);
             Vector2 originRight = pos + new Vector2(rayOffset, forwardOffset);
 
-            bool hitLeft = Physics2D.Raycast(originLeft, Vector2.up, checkDistance, solidLayers);
-            bool hitRight = Physics2D.Raycast(originRight, Vector2.up, checkDistance, solidLayers);
+            bool hitLeft = IsMovementBlocked(originLeft, Vector2.up);
+            bool hitRight = IsMovementBlocked(originRight, Vector2.up);
 
             if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
             else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
@@ -143,8 +142,8 @@ public class PlayerController : MonoBehaviour
             Vector2 originLeft = pos + new Vector2(-rayOffset, -forwardOffset);
             Vector2 originRight = pos + new Vector2(rayOffset, -forwardOffset);
 
-            bool hitLeft = Physics2D.Raycast(originLeft, Vector2.down, checkDistance, solidLayers);
-            bool hitRight = Physics2D.Raycast(originRight, Vector2.down, checkDistance, solidLayers);
+            bool hitLeft = IsMovementBlocked(originLeft, Vector2.down);
+            bool hitRight = IsMovementBlocked(originRight, Vector2.down);
 
             if (hitLeft && !hitRight) { currentVelocity.x = snapSpeed; currentVelocity.y = 0; }
             else if (hitRight && !hitLeft) { currentVelocity.x = -snapSpeed; currentVelocity.y = 0; }
@@ -154,8 +153,8 @@ public class PlayerController : MonoBehaviour
             Vector2 originTop = pos + new Vector2(forwardOffset, rayOffset);
             Vector2 originBottom = pos + new Vector2(forwardOffset, -rayOffset);
 
-            bool hitTop = Physics2D.Raycast(originTop, Vector2.right, checkDistance, solidLayers);
-            bool hitBottom = Physics2D.Raycast(originBottom, Vector2.right, checkDistance, solidLayers);
+            bool hitTop = IsMovementBlocked(originTop, Vector2.right);
+            bool hitBottom = IsMovementBlocked(originBottom, Vector2.right);
 
             if (hitTop && !hitBottom) { currentVelocity.y = -snapSpeed; currentVelocity.x = 0; }
             else if (hitBottom && !hitTop) { currentVelocity.y = snapSpeed; currentVelocity.x = 0; }
@@ -165,14 +164,38 @@ public class PlayerController : MonoBehaviour
             Vector2 originTop = pos + new Vector2(-forwardOffset, rayOffset);
             Vector2 originBottom = pos + new Vector2(-forwardOffset, -rayOffset);
 
-            bool hitTop = Physics2D.Raycast(originTop, Vector2.left, checkDistance, solidLayers);
-            bool hitBottom = Physics2D.Raycast(originBottom, Vector2.left, checkDistance, solidLayers);
+            bool hitTop = IsMovementBlocked(originTop, Vector2.left);
+            bool hitBottom = IsMovementBlocked(originBottom, Vector2.left);
 
             if (hitTop && !hitBottom) { currentVelocity.y = -snapSpeed; currentVelocity.x = 0; }
             else if (hitBottom && !hitTop) { currentVelocity.y = snapSpeed; currentVelocity.x = 0; }
         }
 
         rb.linearVelocity = currentVelocity;
+    }
+
+    // El raycast también debe respetar la excepción temporal entre
+    // este jugador y una bomba colocada bajo sus pies.
+    private bool IsMovementBlocked(Vector2 origin, Vector2 direction)
+    {
+        RaycastHit2D[] hits = Physics2D.RaycastAll(origin, direction, checkDistance, solidLayers);
+        foreach (RaycastHit2D hit in hits)
+        {
+            if (hit.collider == null || hit.collider.isTrigger) continue;
+            // Evitar hits propios aunque el personaje tenga varios colliders.
+            if (hit.collider.GetComponentInParent<PlayerController>() == this) continue;
+
+            // Un Raycast no siempre sigue la exclusion IgnoreCollision entre
+            // colliders. Consultamos directamente el permiso por jugador.
+            Bomb bombHit = hit.collider.GetComponentInParent<Bomb>();
+            if (bombHit != null && bombHit.AllowsTemporaryPassage(this)) continue;
+
+            if (bodyCollider != null && bodyCollider.enabled &&
+                Physics2D.GetIgnoreCollision(bodyCollider, hit.collider))
+                continue;
+            return true;
+        }
+        return false;
     }
 
     public void Die()
@@ -185,11 +208,11 @@ public class PlayerController : MonoBehaviour
 
     public void ActualizarHUD()
     {
-        foreach(HudStats stat in hudStats)
+        foreach (HudStats stat in hudStats)
         {
             if (stat != null)
             {
-                stat.ActualizarDatos(0, maxBombs, speed-3, explosionRadius);
+                stat.ActualizarDatos(0, maxBombs, speed - 3, explosionRadius);
             }
         }
     }
@@ -233,6 +256,9 @@ public class PlayerController : MonoBehaviour
         // Evita dos bombas en una misma casilla, incluso entre jugadores distintos.
         if (ObjectPooler.Instance.HasActiveBombAt(gridPosition)) return;
 
+        // Los jugadores pueden compartir la casilla de una bomba. Bomb se
+        // encargara de permitir que TODOS los ocupantes actuales salgan.
+
         GameObject bombObj = ObjectPooler.Instance.GetPooledBomb();
         if (bombObj == null) return;
 
@@ -242,12 +268,17 @@ public class PlayerController : MonoBehaviour
             Debug.LogError($"{name}: el objeto de bomba no tiene un componente Bomb.", this);
             return;
         }
-        // Ejecucion 
+        // La bomba se coloca en el centro de la casilla actual.
         bombObj.transform.position = gridPosition;
         bombScript.SetOwner(this);  // Registrar propietario antes de activar desde el pool.
         bombScript.explosionRadius = explosionRadius;
-        OnBombPlanted?.Invoke(bombScript); // Compatibilidad con futura habilidad de Mymy.
         bombObj.SetActive(true);
+        // La bomba ya esta activa: registrar el paso temporal para TODOS
+        // los jugadores cuyo cuerpo ocupa su casilla (incluido el dueno).
+        // Debe hacerse antes del siguiente paso de fisica.
+        bombScript.AllowPlayersInsideToExit();
+        OnBombPlanted?.Invoke(bombScript); // Compatibilidad con futura habilidad de Mymy.
+        // Activar bomba inmediatamente para que la excepción de colisión se registre al instante.
 
     }
 
