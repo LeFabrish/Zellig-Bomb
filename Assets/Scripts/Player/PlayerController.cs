@@ -85,7 +85,7 @@ public class PlayerController : MonoBehaviour
 
         // Cada PlayerInpyt lee su copia de acciones y su propio dispositivo emparejado.
         if (plantBombAction != null && plantBombAction.WasPressedThisFrame() &&
-            ObjectPooler.Instance != null && GetActiveBombCount() < maxBombs)
+            ObjectPooler.Instance != null && GetActiveNormalBombCount() < maxBombs)
         {
             PlantBomb();
         }
@@ -271,6 +271,7 @@ public class PlayerController : MonoBehaviour
         // La bomba se coloca en el centro de la casilla actual.
         bombObj.transform.position = gridPosition;
         bombScript.SetOwner(this);  // Registrar propietario antes de activar desde el pool.
+        bombScript.SetPocketBomb(false); // Una bomba X siempre consume el cupo normal.
         bombScript.explosionRadius = explosionRadius;
         bombObj.SetActive(true);
         // La bomba ya esta activa: registrar el paso temporal para TODOS
@@ -282,9 +283,10 @@ public class PlayerController : MonoBehaviour
 
     }
 
-    private int GetActiveBombCount()
+    // El limite de X no incluye las bombas extra soltadas desde el bolsillo.
+    private int GetActiveNormalBombCount()
     {
-        return ObjectPooler.Instance.GetActiveBombCount(this);
+        return ObjectPooler.Instance.GetActiveNormalBombCount(this);
     }
 
     public void TriggerPowerUpFeedback()

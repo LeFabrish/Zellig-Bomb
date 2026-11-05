@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 public class ObjectPooler : MonoBehaviour
@@ -84,6 +83,25 @@ public class ObjectPooler : MonoBehaviour
             }
         }
 
+        return count;
+    }
+
+    // SOLO las bombas normales del propietario consumen el cupo maxBombs.
+    // Las bombas soltadas con SkillMaya son adicionales e independientes.
+    // Conservamos GetActiveBombCount(owner) para el conteo total existente.
+    public int GetActiveNormalBombCount(PlayerController owner)
+    {
+        if (owner == null) return 0;
+        int count = 0;
+
+        foreach (GameObject obj in pooledBombs)
+        {
+            if (obj == null || !obj.activeInHierarchy) continue;
+
+            Bomb bomb = obj.GetComponent<Bomb>();
+            if (bomb != null && bomb.Owner == owner && !bomb.IsPocketBomb)
+                count++;
+        }
         return count;
     }
 

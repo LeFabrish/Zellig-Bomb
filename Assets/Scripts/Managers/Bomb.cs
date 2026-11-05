@@ -21,6 +21,15 @@ public class Bomb : MonoBehaviour
     // Se mantiene antes de activar la bomba desde el pool.
     public PlayerController Owner { get; private set; }
 
+    // Indica que esta bomba fue colocada desde el bolsillo de Maya.
+    // Se contabiliza en el pool, pero no consume el limite normal maxBombs.
+    public bool IsPocketBomb { get; private set; }
+
+    public void SetPocketBomb(bool fromPocket)
+    {
+        IsPocketBomb = fromPocket;
+    }
+
     [Header("Salida de la bomba")]
     [Tooltip("Separación mínima entre todos los colliders del jugador y la bomba para restaurar su colisión.")]
     [Min(0f)] public float exitClearance = 0.03f;
@@ -157,6 +166,7 @@ public class Bomb : MonoBehaviour
     {
         fuseTime = defaultFuseTime;
         Owner = null;
+        IsPocketBomb = false; // Reiniciar al devolver esta instancia al pool.
         ignoredByPlayer.Clear(); // Unity elimina los ignores al desactivar.
         finishedPlayers.Clear();
         explodeCoroutine = null;
